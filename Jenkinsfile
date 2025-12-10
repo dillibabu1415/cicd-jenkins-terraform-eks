@@ -1,7 +1,6 @@
 pipeline {
     agent any
 
-    // Choose whether to apply or destroy
     parameters {
         choice(
             name: 'ACTION',
@@ -14,44 +13,72 @@ pipeline {
         AWS_ACCESS_KEY_ID     = credentials('ACCESS_KEY_ID')
         AWS_SECRET_ACCESS_KEY = credentials('AWS_SECRET_ACCESS_KEY')
         AWS_DEFAULT_REGION    = 'us-east-1'
+        TF_DIR                = 'terraform'   // 👈 UPDATE this to the actual path containing .tf files
     }
 
     stages {
         stage('Checkout SCM') {
             steps {
-                // Simple Git checkout (you can keep checkout scmGit if you prefer)
                 git branch: 'main', url: 'https://github.com/dillibabu1415/cicd-jenkins-terraform-eks.git'
-                // If you must use checkout scmGit, replace with your original block minus dir()
             }
         }
 
-        stage('Initializing Terraform') {
+        stage('Diagnose repository layout') {
             steps {
                 sh '''
-                  set -e
-                  cd terraform
-                  terraform init -upgrade
+                  echo "PWD: $(pwd)"
+                  echo "Top level:"
+                  ls -la
+                  echo "Terraform dir contents ($TF_DIR):"
+                  ls -la "$TF_DIR" || true
+                  echo "Find *.tf within 3 levels:"
+                  find . -name "*.tf" -maxdepth 3 -print || true
                 '''
             }
         }
 
-        stage('Validating Terraform') {
+        stage('Validate Terraform directory') {
             steps {
                 sh '''
                   set -e
-                  cd terraform
-                  terraform validate
+                  if [ ! -d "$TF_DIR" ]; then
+                    echo "ERROR: TF_DIR=$TF_DIR does not exist."
+                    exit 1
+                  fi
+                  TF_COUNT=$(find "$TF_DIR" -maxdepth 1 -name "*.tf" | wc -l)
+                  if [ "$TF_COUNT" -eq 0 ]; then
+                    echo "ERROR: No .tf files found in $TF_DIR. Update TF_DIR to the correct path."
+                    echo "Tip: Check the previous stage output to find where your *.tf files are."
+                    exit 1
+                  fi
                 '''
             }
         }
 
-        stage('Previewing the infrastructure (plan)') {
+        stage('Initialize Terraform') {
             steps {
                 sh '''
                   set -e
-                  cd terraform
-                  terraform plan -input=false -out=tfplan
-                  terraform show -no-color tfplan
+                  terraform -chdir="$TF_DIR" init -upgrade
+                '''
+            }
+        }
+
+        stage('Validate') {
+            steps {
+                sh '''
+                  set -e
+                  terraform -chdir="$TF_DIR" validate
+                '''
+            }
+        }
+
+        stage('Plan') {
+            steps {
+                sh '''
+                  set -e
+                  terraform -chdir="$TF_DIR" plan -input=false -out=tfplan
+                  terraform -chdir="$TF_DIR" show -no-color tfplan
                 '''
             }
         }
@@ -59,16 +86,15 @@ pipeline {
         stage('Approve & Execute') {
             steps {
                 input message: "Approve to ${params.ACTION} the EKS cluster?", ok: "Proceed"
-                sh """
+                sh '''
                   set -e
-                  cd terraform
-                  if [ "${params.ACTION}" = "apply" ]; then
-                    terraform apply -input=false -auto-approve tfplan
+                  if [ "${ACTION}" = "apply" ]; then
+                    terraform -chdir="$TF_DIR" apply -input=false -auto-approve tfplan
                   else
-                    terraform destroy -input=false -auto-approve
+                    terraform -chdir="$TF_DIR" destroy -input=false -auto-approve
                   fi
-                """
+                '''
             }
         }
     }
- }
+}
