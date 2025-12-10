@@ -71,13 +71,4 @@ pipeline {
             }
         }
     }
-
-    post {
-        always {
-            // Optional: clean up the workspace after the build
-            // deleteDir()         // built-in
-            // OR, if you have the Workspace Cleanup plugin:
-            // cleanWs()
-        }
-    }
-}
+ }
