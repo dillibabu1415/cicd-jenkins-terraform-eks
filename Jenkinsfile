@@ -13,7 +13,7 @@ pipeline {
         AWS_ACCESS_KEY_ID     = credentials('ACCESS_KEY_ID')
         AWS_SECRET_ACCESS_KEY = credentials('AWS_SECRET_ACCESS_KEY')
         AWS_DEFAULT_REGION    = 'us-east-1'
-        TF_DIR                = 'terraform'   // 👈 UPDATE this to the actual path containing .tf files
+        TF_DIR                = 'Terraform'   // 👈 UPDATE this to the actual path containing .tf files
     }
 
     stages {
